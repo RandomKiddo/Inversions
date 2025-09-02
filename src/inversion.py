@@ -30,6 +30,8 @@ import importlib.util as iu
 import inspect
 import argparse
 import time
+import numpy as np
+import sys 
 
 
 from typing import *
@@ -57,9 +59,11 @@ def safe_load_module_from_path(path: str) -> ModuleType:
     :return: The module as ModuleType.
     """
 
+    # Check if file is found.
     if not os.path.isfile(path):
         raise FileNotFoundError(f'No such file: {path}.')
 
+    # Retrieve module name and the module itself from the spec.
     module_name = os.path.splitext(os.path.basename(path))[0]
     spec = iu.spec_from_file_location(module_name, path)
     module = iu.module_from_spec(spec)
@@ -75,9 +79,11 @@ def validate_function_signature(func: Callable[[float], float], name: str) -> No
     :param name: String name of the function.
     """
 
+    # Inspect the signature of the function and fetch its parameters. 
     sig = inspect.signature(func)
     params = sig.parameters.values()
 
+    # Check for the required positional arguments.
     required_positional = [
         p for p in params
         if p.default == p.empty and p.kind in (
@@ -86,6 +92,7 @@ def validate_function_signature(func: Callable[[float], float], name: str) -> No
         )
     ]
 
+    # Ensure that there is only one required positional arg. 
     if not len(required_positional) != 1:
         raise TypeError(f"Function '{name}' must have at least one required positional argument (like 'y')")
 
@@ -102,29 +109,131 @@ def newton_raphson(f: Callable[[float], float], df: Callable[[float], float], y0
     :return: A tuple of the inversion y-value, the relative error, and the number of iterations used.
     """
 
+    # Initial guess.
     y = y0
+
+    # Enter loop. We loop while we haven't reached max iterations.
     for _ in range(max_iter):
+        # Calculate f(y) and f'(y) [called df(y)].
         fy = f(y)
         dfy = df(y)
 
+        # Check if the derivative is 0. If it is, then we must return the latest value, as NR divides by the derivative to step.
+        # This is logical since a curve of zero slope will not yield a 0, or infinite roots if y=0 (trivial).
         if dfy == 0:
             warnings.warn('Derivative of f(y) is zero. Return latest y.')
             return y
         
+        # Calculate the new y based on NR-inversion and check if its error is less than the required tolerance. If so, we return
+        # the new y, the error, and the iteration number. If not, we set this as the new y and continue inversion.
         y_new = y - fy/dfy
         err = abs(y_new - y)
         if err < tol:
             return y_new, err, _+1 
         y = y_new
     
+    # The root could not be found in the iteration time. This is likely due to precision, not enough iterations, or bad initial y0 guess (among others).
     raise RuntimeError(f'Could not converge Newton-Raphson step in {max_iter} iterations. Latest prec: {abs(y_new-y)}') 
 
 
-def brent_dekker(f: Callable[[float], float], df: Callable[[float], float], y0: float, tol: float = 1e-5, max_iter: int = 100) -> float:
-    pass  # todo complete
+def brent_dekker(f: Callable[[float], float], a: float, b: float, tol: float = 1e-5, max_iter: int = 100) -> float:
+    """
+    Brent-Dekker inversion. See Brent's Method: https://en.wikipedia.org/wiki/Brent%27s_method. <br>
+    :param f: The inversion callable function, taking a float and returning a float. <br>
+    :param a: The left bracketing value. Pick a sensible one for your task. <br>
+    :param b: The right bracketing value. Pick a sensible one for your task. <br>
+    :param tol: The precision or tolerance for the relative error to use for the inversion, defaults to 1e-5. <br>
+    :param max_iter: The max number of iterations to use in the inversion, defaults to 100. <br>
+    :return: A tuple of the inversion y-value, the relative error, and the number of iterations used.
+    """
+
+    # Assign the left and right brackets.
+    left_bracket = f(a)
+    right_bracket = f(b)
+
+    # Check if the values are bracketed. If f(a)*f(b) >= 0, then it is not bracketed, as a f(y) must change signs for a root by IVT (and thus f(a)*f(b) must be negative).
+    # If the brackets are flipped, they are swapped, and a warning is given.
+    if left_bracket * right_bracket >= 0:
+        raise ValueError('The root is not bracketed, f(a)*f(b) >= 0.')
+    elif np.abs(left_bracket) < np.abs(right_bracket):
+        left_bracket, right_bracket = right_bracket, left_bracket
+        warnings.warn('|f(a)| < |f(b)|, swapping bracketing values.')
+    
+    # Define c and s initial values (parameters for inversion).
+    c = a
+    s = b
+
+    def s_func(a0: float, b0: float, c0: float) -> float:
+        """
+        Returns the value of s using inverse quadratic interpolation. See https://en.wikipedia.org/wiki/Inverse_quadratic_interpolation. <br>
+        :param a0: The current value for a (left bracket).
+        :param b0: The current value for b (right bracket).
+        :param c0: The current value for c.
+        """
+
+        # Inverse quadratic interpolation
+        one = (a0 * f(b0) * f(c0)) / ((f(a0) - f(b0)) * (f(a0) - f(c0)))
+        two = (b0 * f(a0) * f(c0)) / ((f(b0) - f(a0)) * (f(b0) - f(c0)))
+        three = (c0 * f(a0) * f(b0)) / ((f(c0) - f(a0)) * (f(c0) - f(b0)))
+
+        return one + two + three
+
+    iter_no = 0
+    mflag = True  # Boolean flag that tracks whether last step was a bisection step.
+    d = 0
+    delta = 2 * sys.float_info.epsilon * abs(b) + sys.float_info.epsilon  # Machine precision values based on right bracket, a.k.a. internal tolerance.
+
+    # Begin inversion.
+    while ((f(b) != 0 or f(s) != 0) or np.abs(b-a) > tol) and iter_no < max_iter:
+        
+        if f(a) != f(c) and f(b) != f(c):
+            # Use inverse quadratic interpolation.
+            s = s_func(a, b, c)
+        else:
+            # Use secant method. See https://en.wikipedia.org/wiki/Secant_method.
+            s = b - f(b) * ((b - a) / (f(b) - f(a)))
+                
+        if ( not ((3*a + b)/4 < s < b) or (mflag and np.abs(s-b) >= np.abs(b-c)/2) or (not mflag and np.abs(s-b) >= np.abs(c-d)/2) 
+            or (mflag and np.abs(b-c) < np.abs(delta)) or (not mflag and np.abs(c-d) < np.abs(delta))):
+            # Use bisection method. See https://en.wikipedia.org/wiki/Bisection_method.
+            s = (a+b)/2
+            mflag = True  # Bisection method was used, so set this to True.
+        else:
+            mflag = False  # Bisection method was *not* used, so set this to False.
+        
+        # Update bracketing values based on s.
+        fs = f(s)
+        d = c
+        c = b
+
+        if f(a) * f(s) < 0:
+            b = s
+        else:
+            a = s
+        
+        # See if bracketing values need to be swapped.
+        if np.abs(f(a)) < np.abs(f(b)):
+            a, b = b, a
+        
+        # Update internal tolerance based on b.
+        delta = 2 * sys.float_info.epsilon * abs(b) + sys.float_info.epsilon
+
+        # Increment iteration number.
+        iter_no += 1
+    
+    # The root could not be found in the iteration time. This is likely due to precision, not enough iterations, or bad initial bracketing values (among others).
+    if (iter_no >= max_iter):
+        raise RuntimeError(f'Could not converge Newton-Raphson step in {max_iter} iterations. Latest prec: {np.abs(b-a)}. Last s: {s}.') 
+        
+    # Return the s value (location of root), the relative error, and the iteration number.
+    return s, np.abs(b-a), iter_no
 
 
 def secant(f: Callable[[float], float], df: Callable[[float], float], y0: float, tol: float = 1e-5, max_iter: int = 100) -> float:
+    pass  # todo complete
+
+
+def bisection(f: Callable[[float], float], df: Callable[[float], float], y0: float, tol: float = 1e-5, max_iter: int = 100) -> float:
     pass  # todo complete
 
 
@@ -153,6 +262,6 @@ if __name__ == '__main__':
     validate_function_signature(module.f, 'f')
     validate_function_signature(module.df, 'df')
 
-    y_root, err, iters = newton_raphson(module.f, module.df, args.y0, args.tol, args.max_iter)
-    print(f'Root found: y = {y_root}. Precision error: {err}. Found in {iters} iterations.')
+    # y_root, err, iters = newton_raphson(module.f, module.df, args.y0, args.tol, args.max_iter)
+    # print(f'Root found: y = {y_root}. Precision error: {err}. Found in {iters} iterations.')
 
