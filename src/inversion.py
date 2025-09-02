@@ -20,6 +20,7 @@ The inversion formulae used are from Wikipedia.
 Newton-Raphson: https://en.wikipedia.org/wiki/Newton%27s_method.
 Brent-Dekker: https://en.wikipedia.org/wiki/Brent%27s_method.
 Secant: https://en.wikipedia.org/wiki/Secant_method.
+Bisection: https://en.wikipedia.org/wiki/Bisection_method.
 """
 
 # todo update comments
@@ -202,7 +203,6 @@ def brent_dekker(f: Callable[[float], float], a: float, b: float, tol: float = 1
             mflag = False  # Bisection method was *not* used, so set this to False.
         
         # Update bracketing values based on s.
-        fs = f(s)
         d = c
         c = b
 
@@ -223,21 +223,117 @@ def brent_dekker(f: Callable[[float], float], a: float, b: float, tol: float = 1
     
     # The root could not be found in the iteration time. This is likely due to precision, not enough iterations, or bad initial bracketing values (among others).
     if (iter_no >= max_iter):
-        raise RuntimeError(f'Could not converge Newton-Raphson step in {max_iter} iterations. Latest prec: {np.abs(b-a)}. Last s: {s}.') 
+        raise RuntimeError(f'Could not converge Brent-Dekker step in {max_iter} iterations. Latest prec: {np.abs(b-a)}. Last s: {s}.') 
         
     # Return the s value (location of root), the relative error, and the iteration number.
     return s, np.abs(b-a), iter_no
 
 
-def secant(f: Callable[[float], float], df: Callable[[float], float], y0: float, tol: float = 1e-5, max_iter: int = 100) -> float:
-    pass  # todo complete
+# todo test
+def secant(f: Callable[[float], float], y0: float, y1: float, tol: float = 1e-5, max_iter: int = 100, stopping_method: int = 1) -> float:
+    """
+    Secant method inversion. See https://en.wikipedia.org/wiki/Secant_method. <br>
+    :param f: The inversion callable function, taking a float and returning a float. <br>
+    :param y0: The float first initial guess value to use. Pick a sensible one for your task. <br>
+    :param y1: The float second initial guess value to use. Pick a sensible one for your task. <br>
+    :param tol: The precision or tolerance for the relative error to use for the inversion, defaults to 1e-5. <br>
+    :param max_iter: The max number of iterations to use in the inversion, defaults to 100. <br>
+    :param stopping_condition: Int value representing which stopping condition to use (1, 2, or 3), defaults to 1. See below for more info. <br>
+    :return: A tuple of the inversion y-value, the relative error, and the number of iterations used. <br>
+    <br>
+    On the error stopping conditions, we have three different possible conditions: <br>
+        1. Calculate error using abs(y0-y1) < tol. <br>
+        2. Calculate error using abs(y0/y1 - 1) < tol. <br>
+        3. Calculate error using abs(f(y1)) < tol. <br>
+        If any other integer is given, the default behavior is then 1. <br>
+    """
+
+    # Begin inversion. We require no set-up.
+    for _ in range(max_iter):
+        # Calculate the root of the linear function through (y0, f(y0)) and (y1, f(y1)).
+        # Set the new boundary values.
+        y2 = y1 - f(y1) * (y1 - y0) / float(f(y1) - f(y0))
+        y0, y1 = y1, y2
+
+        # Calculate the error. We have three conditions:
+        # 1. Calculate error using abs(y0-y1) < tol.
+        # 2. Calculate error using abs(y0/y1 - 1) < tol.
+        # 3. Calculate error using abs(f(y1)) < tol.
+        # If any other integer is given, the default behavior is then 1. 
+        err = None
+
+        if stopping_method == 2:
+            err = abs(y0/y1 - 1)
+        elif stopping_method == 3:
+            err = abs(f(y1))
+        else:
+            err = abs(y0-y1)
+        
+        # Check if the error is less than the tolerance. If so, return the root found.
+        if err < tol:
+            return y2, err, _+1
+
+    # The root could not be found in the iteration time. This is likely due to precision, not enough iterations, bad initial values, or secant method is unable to invert this with the given values (among others).
+    raise RuntimeError(f'Could not converge Secant step in {max_iter} iterations. Latest prec: {err}. Last y2: {y2}.') 
 
 
-def bisection(f: Callable[[float], float], df: Callable[[float], float], y0: float, tol: float = 1e-5, max_iter: int = 100) -> float:
-    pass  # todo complete
+# todo test
+def bisection(f: Callable[[float], float], a: float, b:float, tol: float = 1e-5, max_iter: int = 100) -> float:
+    """
+    Bisection method inversion. See https://en.wikipedia.org/wiki/Bisection_method. <br>
+    :param a: The float left endpoint value to use. Pick a sensible one for your task. <br>
+    :param b: The float right endpoint value to use. Pick a sensible one for your task. <br>
+    :param tol: The precision or tolerance for the relative error to use for the inversion, defaults to 1e-5. <br>
+    :param max_iter: The max number of iterations to use in the inversion, defaults to 100. <br>
+    """
+
+    # Check if the left endpoint is indeed left of the right endpoint. Swap them otherwise and output a warning.
+    if b < a:
+        a, b = b, a
+        warnings.warn('b < a, swapping endpoint values.')
+    
+    # Check bisection method condition for sign change. Fail otherwise.
+    if not ((f(a) < 0 and f(b) > 0) or (f(a) > 0 and f(b) < 0)):
+        raise RuntimeError('Bisection condition was not met. Either f(a) < 0 and f(b) > 0 or f(a) > 0 and f(b) < 0 must hold.')
+    
+    # Begin inversion.
+    iter_no = 1
+    while iter_no <= max_iter:
+        # Find the midpoint of the end point.
+        c = (a+b) / 2
+
+        # Check if we have found a root or are within tolerance for one. If so, return the root, relative error, and iteration number.
+        if f(c) == 0 or (b-a)/2 < tol:
+            return c, (b-a)/2, iter_no
+        
+        # Increment iteration number.
+        iter_no += 1
+
+        # Update interval values based on the sign of f(a) and f(c). If they have the same sign, update a, else update b.
+        if np.sign(f(c)) == np.sign(f(a)):
+            a = c
+        else:
+            b = c
+    
+    # The root could not be found in the iteration time. This is likely due to precision, not enough iterations, bad initial values, or secant method is unable to invert this with the given values (among others).
+    raise RuntimeError(f'Could not converge Bisection step in {max_iter} iterations. Latest prec: {(b-a)/2}. Last c: {c}.') 
 
 
-def full_inversion(f: Callable[[float], float], df: Callable[[float], float], y0: float, tol: float = 1e-5, max_iter: int = 100) -> float:
+def full_inversion(f: Callable[[float], float], df: Callable[[float], float], y0: float, brackets: tuple, tol: float = 1e-5, max_iter: int = 100) -> float:
+    """
+    The steps are as follows:
+    1. Check relative error
+        a. If error > 0.01, use secant method for one step.
+        b. Else use Newton-Raphson for one step.
+    2. If step goes outside bracketing values, revert to Brent-Dekker (assuming bracketing values are given and exist).
+    3. Update bracketing values.
+    Loop untils error < tolerance or n iterations > n max iterations.
+    """
+
+    err = 1
+    while err > tol:
+        pass 
+    
     pass  # todo complete
 
 
