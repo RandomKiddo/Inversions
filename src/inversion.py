@@ -137,6 +137,7 @@ def newton_raphson(f: Callable[[float], float], df: Callable[[float], float], y0
     raise RuntimeError(f'Could not converge Newton-Raphson step in {max_iter} iterations. Latest prec: {abs(y_new-y)}') 
 
 
+@timefn
 def brent_dekker(f: Callable[[float], float], a: float, b: float, tol: float = 1e-5, max_iter: int = 100) -> float:
     """
     Brent-Dekker inversion. See Brent's Method: https://en.wikipedia.org/wiki/Brent%27s_method. <br>
@@ -230,6 +231,7 @@ def brent_dekker(f: Callable[[float], float], a: float, b: float, tol: float = 1
 
 
 # todo test
+@timefn
 def secant(f: Callable[[float], float], y0: float, y1: float, tol: float = 1e-5, max_iter: int = 100, stopping_method: int = 1) -> float:
     """
     Secant method inversion. See https://en.wikipedia.org/wiki/Secant_method. <br>
@@ -278,6 +280,7 @@ def secant(f: Callable[[float], float], y0: float, y1: float, tol: float = 1e-5,
 
 
 # todo test
+@timefn 
 def bisection(f: Callable[[float], float], a: float, b:float, tol: float = 1e-5, max_iter: int = 100) -> float:
     """
     Bisection method inversion. See https://en.wikipedia.org/wiki/Bisection_method. <br>
