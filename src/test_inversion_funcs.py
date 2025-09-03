@@ -9,3 +9,4 @@ def df(x: float) -> float:
 
 
 print(brent_dekker(f, -4, 4/3))
+print(hybrid_inversion(f, df, 0, -4, 4/3))
