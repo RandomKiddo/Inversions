@@ -22,6 +22,11 @@ Newton-Raphson: https://en.wikipedia.org/wiki/Newton%27s_method.
 Brent-Dekker: https://en.wikipedia.org/wiki/Brent%27s_method.
 Secant: https://en.wikipedia.org/wiki/Secant_method.
 Bisection: https://en.wikipedia.org/wiki/Bisection_method.
+
+On general root-finding algorithms:
+https://en.wikipedia.org/wiki/Root-finding_algorithm.
+
+* Copyright © 2025 RandomKiddo
 """
 
 
