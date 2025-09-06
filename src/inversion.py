@@ -99,7 +99,7 @@ def validate_function_signature(func: Callable[[float], float], name: str) -> No
     ]
 
     # Ensure that there is only one required positional arg. 
-    if not len(required_positional) != 1:
+    if len(required_positional) != 1:
         raise TypeError(f"Function '{name}' must have at least one required positional argument (like 'y')")
 
 
@@ -429,19 +429,50 @@ if __name__ == '__main__':
     parser.add_argument('-y0', type=float, default=1.0, help='Initial guess for inversion solver. Defaults to 1.0.')
     parser.add_argument('-tol', type=float, default=1e-5, help='Convergence tolerance. Defaults to 1e-5.')
     parser.add_argument('-max_iter', type=int, default=100, help='Maximum number of iterations. Defaults to 100.')
+    parser.add_argument('-verbose', action='store_true', help='If convergence warnings should be returned to the console.')
+    parser.add_argument('-y1', type=float, default=0.0, help='Initial second guess for inversion solver. Defaults to 0.0.')
+    parser.add_argument('-a', type=float, default=0.0, help='The left bracketing value. Defaults to 0.0.')
+    parser.add_argument('-b', type=float, default=1.0, help='The right bracketing value. Defaults to 1.0.')
+    parser.add_argument('-stopcon', type=int, default=1, help='The int stopping condition number for secant inversion. Defaults to 1.')
 
     args = parser.parse_args()
 
     module = safe_load_module_from_path(args.function_file)
 
+    print('Which inversion method would you like to use (enter the integer)?')
+    method = None
+    while method is None:
+        inp = input('[1]: Newton Raphson | [2]: Brent-Dekker | [3]: Secant | [4]: Bisection | [5]: Hybrid\n')
+        try:
+            method = int(inp)
+        except:
+            method = None
+            print('Invalid input, please try again.')
+        else:
+            if not (1 <= method <= 5):
+                method = None
+                print('Invalid input, please try again.')
+    
     if not hasattr(module, 'f') or not callable(module.f):
         raise AttributeError("The module must define a function named 'f(y)'")
-    if not hasattr(module, 'df') or not callable(module.df):
+    if (method == 1 or method == 5) and (not hasattr(module, 'df') or not callable(module.df)):
         raise AttributeError("The module must define a function named 'df(y)'")
+    elif method == 1 or method == 1 and (hasattr(module, 'df') and callable(module.df)):
+        validate_function_signature(module.df, 'df')
     
     validate_function_signature(module.f, 'f')
-    validate_function_signature(module.df, 'df')
+    
+    res = None
+    if method == 1:
+        res = newton_raphson(module.f, module.df, args.y0, args.tol, args.max_iter, args.verbose)
+    elif method == 2:
+        res = brent_dekker(module.f, args.a, args.b, args.tol, args.max_iter, args.verbose)
+    elif method == 3:
+        res = secant(module.f, args.y0, args.y1, args.tol, args.max_iter, args.stopcon, args.verbose)
+    elif method == 4:
+        res = bisection(module.f, args.a, args.b, args.tol, args.max_iter, args.verbose)
+    else:
+        res = hybrid_inversion(module.f, module.df, args.y0, args.a, args.b, args.tol, args.max_iter, args.verbose)
 
-    # y_root, err, iters = newton_raphson(module.f, module.df, args.y0, args.tol, args.max_iter)
-    # print(f'Root found: y = {y_root}. Precision error: {err}. Found in {iters} iterations.')
+    print(f'Last value of root: {res[0]}, with error: {res[1]}, in {res[2]} iterations.')
 

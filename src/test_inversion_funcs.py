@@ -8,5 +8,5 @@ def df(x: float) -> float:
     2*(x-1)*(x-3) + (x-1)**2
 
 
-print(brent_dekker(f, -4, 4/3))
-print(hybrid_inversion(f, df, 0, -4, 4/3))
+#print(brent_dekker(f, -4, 4/3))
+#print(hybrid_inversion(f, df, 0, -4, 4/3))
